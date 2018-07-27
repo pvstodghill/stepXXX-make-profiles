@@ -1,0 +1,123 @@
+#! /bin/bash
+
+PROGNAME=`basename $0`
+
+OPT_S=
+OPT_P=png
+OPT_T=
+
+TEMP=`getopt p:st: $*`
+if [ $? != 0 ] ; then usage 1 ; fi
+set -- $TEMP
+while true ; do
+    case "$1" in
+	-s) OPT_S=1 ; shift 1 ;;
+	-p) OPT_P=$2 ; shift 2 ;;
+	-t) OPT_T="$2" ; shift 2 ;;
+	--) shift ; break ;;
+	*) echo "Can't happen" ; exit 1 ;;
+    esac
+done
+
+function usage {
+    echo "Usage: $PROGNAME [-p (png|ps)] [-t title] [-s] PROFILE > PLOT" 1>&2
+    echo "-s - suppress title and legends" 1>&2
+    exit "$@"
+}
+
+if [ -z "$1" ] ; then
+    usage 1
+fi
+
+if [ -z "$OPT_T" ] ; then
+    OPT_T="$1"
+fi
+
+T=${TMP:-/tmp}/profile2plot.$$
+rm -f $T.gnuplot
+
+LW=
+case "$OPT_P" in
+    png)
+	cat >>$T.gnuplot  <<EOF
+set term png size 1500,300
+EOF
+	;;
+    png-)
+	cat >>$T.gnuplot  <<EOF
+set term png size 1500,750 giant
+EOF
+	LW="lw 5"
+	;;
+    ps)
+	cat >>$T.gnuplot  <<EOF
+set term postscript eps color  size 10in,2in
+EOF
+	;;
+    *) usage 1
+esac
+
+W=`head -n 1 $1 | wc -w | sed -e 's/^[ \t][ \t]*//'`
+
+#TYPE=impulses
+TYPE=lines
+
+
+if [ "$OPT_S" ] ; then
+    cat >>$T.gnuplot  <<EOF
+set notitle
+EOF
+else
+    cat >>$T.gnuplot  <<EOF
+set title "$OPT_T"
+EOF
+fi
+cat >>$T.gnuplot  <<EOF
+set output
+profile_file = "$1"
+EOF
+
+if [ "$3" ] ; then
+    cat >>$T.gnuplot  <<EOF
+set xrange [$2:$3]
+EOF
+else
+    N=`cat $1 | wc -l`
+    cat >>$T.gnuplot  <<EOF
+set xrange [0:$N+1]
+EOF
+fi
+
+if [ "$W" = "1" ] ; then
+    if [ "$OPT_S" ] ; then
+	cat >>$T.gnuplot  <<EOF
+plot profile_file  using (\$0+1-.1):1 notitle with $TYPE $LW lc rgbcolor "black"
+EOF
+    else
+	cat >>$T.gnuplot  <<EOF
+plot profile_file  using (\$0+1-.1):1 title "profile" with $TYPE $LW lc rgbcolor "black"
+EOF
+    fi
+elif [ "$W" = "2" ] ; then
+    if [ "$OPT_S" ] ; then
+	cat >>$T.gnuplot  <<EOF
+plot profile_file using (\$0+1-.1):1 notitle with $TYPE $LW lc rgbcolor "red", \
+     profile_file using (\$0+1+.1):2 notitle with $TYPE $LW lc rgbcolor "green"
+EOF
+    else
+	cat >>$T.gnuplot  <<EOF
+plot profile_file using (\$0+1-.1):1 title "+" with $TYPE $LW lc rgbcolor "red", \
+     profile_file using (\$0+1+.1):2 title "-" with $TYPE $LW lc rgbcolor "green"
+EOF
+    fi
+else
+    echo 1>&2 "$PROGNAME: How many words? $W"
+    exit 1
+fi
+
+gnuplot < $T.gnuplot
+
+rm -f $T.*
+
+exit 0
+
